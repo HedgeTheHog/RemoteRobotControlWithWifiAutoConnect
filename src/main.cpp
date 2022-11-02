@@ -53,6 +53,11 @@ const int ledPin = 2;
 // Stores LED state
 
 String ledState;
+int n;
+String sieci ="";
+
+
+
 
 // Initialize SPIFFS
 void initSPIFFS() {
@@ -131,15 +136,59 @@ bool initWiFi() {
 }
 
 // Replaces placeholder with LED state value
-String processor(const String& var) {
-  if(var == "STATE") {
-    if(digitalRead(ledPin)) {
-      ledState = "ON";
-    }
-    else {
-      ledState = "OFF";
-    }
-    return ledState;
+//String processor(const String& var) {
+
+  //   if(var == "BUTTONPLACEHOLDER"){
+  //      String buttons = "";
+
+
+  //        int n = WiFi.scanNetworks();
+  // Serial.println("scan done");
+  // if (n == 0) {
+  //     Serial.println("no networks found");
+  // } else {
+  //   Serial.print(n);
+  //   Serial.println(" networks found");
+  //   for (int i = 0; i < n; ++i) {
+  //     // Print SSID and RSSI for each network found
+  //     Serial.print(i + 1);
+  //     Serial.print(": ");
+  //     Serial.println(WiFi.SSID(i));
+  //     buttons +="<input type=\"radio\" id=\"html\" name=\"fav_language\" value=\"HTML\">";
+  //         buttons += "<label for=\"html\">"+WiFi.SSID(i)+"</label><br>";
+  
+  //   }
+  //   buttons += "</br></br>";
+  // }
+  //   return buttons;
+  // }
+
+
+
+//   if(var == "STATE") {
+//     if(digitalRead(ledPin)) {
+//       ledState = "ON";
+//     }
+//     else {
+//       ledState = "OFF";
+//     }
+//     return ledState;
+//   }
+//   return String();
+// }
+
+
+
+
+String processor(const String& var){
+  //Serial.println(var);
+  if(var == "BUTTONPLACEHOLDER"){
+       String buttons = ""; 
+        buttons += sieci;
+
+    buttons += "</br></br>";
+  
+    return buttons;
   }
   return String();
 }
@@ -164,7 +213,8 @@ void setup() {
   Serial.println(ip);
   Serial.println(gateway);
 
-  if(initWiFi()) {
+  if(false) {
+ // if(initWiFi()) {
     // Route for root / web page
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
       request->send(SPIFFS, "/index.html", "text/html", false, processor);
@@ -194,25 +244,46 @@ void setup() {
     Serial.print("AP IP address: ");
     Serial.println(IP); 
 
- int n = WiFi.scanNetworks();
+
+
+
+        n = WiFi.scanNetworks();
   Serial.println("scan done");
+    if (n == -2) {
+      Serial.println("SCAN FAILED if this happens often then needs to be handled");
+    }else
   if (n == 0) {
       Serial.println("no networks found");
   } else {
     Serial.print(n);
     Serial.println(" networks found");
+    sieci=="";
     for (int i = 0; i < n; ++i) {
+     // Serial.println("in the loop");
       // Print SSID and RSSI for each network found
+
+      String temp = WiFi.SSID(i);
+
       Serial.print(i + 1);
       Serial.print(": ");
-      Serial.println(WiFi.SSID(i));
-    }
-  }
+     // Serial.println(WiFi.SSID(i));
+      Serial.println(temp);
+sieci+="<input type=\"radio\"  name=\"ssid\" value=\""+temp+"\">";
+        sieci += "<label for=\"html\">"+temp+"</label><br>";
+      }
 
-    // Web Server Root URL
+    }
+    Serial.println(sieci);
+   // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/wifimanager.html", "text/html");
+      request->send(SPIFFS, "/wifimanager.html", "text/html", false, processor);
     });
+
+  // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+  //   request->send_P(200, "text/html", index_html, processor);
+  // });
+
+
     
     server.serveStatic("/", SPIFFS, "/");
     

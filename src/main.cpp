@@ -114,31 +114,28 @@ void writeFile(fs::FS &fs, const char *path, const char *message)
 // Initialize WiFi
 bool initWiFi()
 {
-  // if(ssid=="" || ip==""){
-  //   Serial.println("Undefined SSID or IP address.");
-  //   return false;
-  // }
+  if(ssid=="" || ip==""){
+    Serial.println("Undefined SSID or IP address.");
+    return false;
+  }
 
   WiFi.mode(WIFI_STA);
-  // localIP.fromString(ip.c_str());
-  // localGateway.fromString(gateway.c_str());
+  localIP.fromString(ip);
+  localGateway.fromString(gateway);
 
-  // if (!WiFi.config(localIP, localGateway, subnet)){
-  //   Serial.println("STA Failed to configure");
-  //   return false;
-  // }
+  Serial.println(subnet);
+
+
+  if (!WiFi.config(localIP, localGateway, subnet)){
+    Serial.println("STA Failed to configure");
+    return false;
+  }
 
   const char *ssidEr = ssid.c_str();
   const char *passEr = pass.c_str();
 
-  //Serial.println(ssidEr);
-  //Serial.println(passEr);
- // delay(10000);
 
   WiFi.begin(ssidEr, passEr);
-  // WiFi.begin(ssidDD, passwordDDD);
-
-  ///  WiFi.begin(ssid.c_str(), pass.c_str());
   Serial.println("Connecting to WiFi...");
 
   unsigned long currentMillis = millis();
@@ -159,15 +156,12 @@ bool initWiFi()
   }
 
   Serial.println(WiFi.localIP());
-  writeFile(SPIFFS, ipPath, WiFi.localIP().toString().c_str());
   MDNS.begin("esp");
-  delay(5000); // remove after finishing debugging
   return true;
 }
 
 String processor(const String &var)
 {
-  // Serial.println(var);
   if (var == "BUTTONPLACEHOLDER")
   {
     String buttons = "";
@@ -221,7 +215,6 @@ void setup()
   Serial.println(ip);
   Serial.println(gateway);
 
-  // if(false) {
   if (initWiFi())
   {
     // Route for root / web page
@@ -277,7 +270,6 @@ void setup()
 
         Serial.print(i + 1);
         Serial.print(": ");
-        // Serial.println(WiFi.SSID(i));
         Serial.println(temp);
         sieci += "<input type=\"radio\"  name=\"ssid\" value=\"" + temp + "\">";
         sieci += "<label for=\"html\">" + temp + "</label><br>";
@@ -352,14 +344,17 @@ void setup()
 
 void loop()
 {
-  if (counter <= 3)
+  if (WiFi.getMode() != 1)
   {
+    if (counter <= 3)
+    {
 
-    dnsServer.processNextRequest();
-  }
-  else
-  {
-    server.removeHandler(handlerrr);
-    dnsServer.stop();
+      dnsServer.processNextRequest();
+    }
+    else
+    {
+      server.removeHandler(handlerrr);
+      dnsServer.stop();
+    }
   }
 }

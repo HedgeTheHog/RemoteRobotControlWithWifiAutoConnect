@@ -13,6 +13,8 @@
 #include "SPIFFS.h"
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+//#include "initializeWifi.h"
+#include "spiffsActions.h"
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
@@ -31,12 +33,6 @@ String pass;
 String ip;
 String gateway;
 
-// File paths to save input values permanently
-const char *ssidPath = "/ssid.txt";
-const char *passPath = "/pass.txt";
-const char *ipPath = "/ip.txt";
-const char *gatewayPath = "/gateway.txt";
-
 IPAddress localIP;
 // IPAddress localIP(192, 168, 1, 200); // hardcoded
 
@@ -44,6 +40,9 @@ IPAddress localIP;
 IPAddress localGateway;
 // IPAddress localGateway(192, 168, 1, 1); //hardcoded
 IPAddress subnet(255, 255, 0, 0);
+
+AsyncWebHandler *requestHandler;
+
 
 // Timer variables
 unsigned long previousMillis = 0;
@@ -60,56 +59,9 @@ int counter = 0;
 AsyncWebHandler *handlerrr;
 
 // Initialize SPIFFS
-void initSPIFFS()
-{
-  if (!SPIFFS.begin(true))
-  {
-    Serial.println("An error has occurred while mounting SPIFFS");
-  }
-  Serial.println("SPIFFS mounted successfully");
-}
+void initSPIFFS();
 
-// Read File from SPIFFS
-String readFile(fs::FS &fs, const char *path)
-{
-  Serial.printf("Reading file: %s\r\n", path);
 
-  File file = fs.open(path);
-  if (!file || file.isDirectory())
-  {
-    Serial.println("- failed to open file for reading");
-    return String();
-  }
-
-  String fileContent;
-  while (file.available())
-  {
-    fileContent = file.readStringUntil('\n');
-    break;
-  }
-  return fileContent;
-}
-
-// Write file to SPIFFS
-void writeFile(fs::FS &fs, const char *path, const char *message)
-{
-  Serial.printf("Writing file: %s\r\n", path);
-
-  File file = fs.open(path, FILE_WRITE);
-  if (!file)
-  {
-    Serial.println("- failed to open file for writing");
-    return;
-  }
-  if (file.print(message))
-  {
-    Serial.println("- file written");
-  }
-  else
-  {
-    Serial.println("- frite failed");
-  }
-}
 
 // Initialize WiFi
 bool initWiFi()
@@ -210,10 +162,16 @@ void setup()
   pass = readFile(SPIFFS, passPath);
   ip = readFile(SPIFFS, ipPath);
   gateway = readFile(SPIFFS, gatewayPath);
-  Serial.println(ssid);
-  Serial.println(pass);
-  Serial.println(ip);
-  Serial.println(gateway);
+  /*   Serial.println(ssid);
+    Serial.println(pass);
+    Serial.println(ip);
+    Serial.println(gateway); */
+
+  const char *ssidChar = ssid.c_str();
+  const char *passChar = pass.c_str();
+  const char *ipChar = ip.c_str();
+  const char *gatewayChar = gateway.c_str();
+  //initWiFiii_init();
 
   if (initWiFi())
   {
@@ -235,8 +193,8 @@ void setup()
       request->send(SPIFFS, "/index.html", "text/html", false, processor); });
     server.begin();
   }
-  else
-  {
+  else  {
+    counter = 0;
     // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
@@ -263,25 +221,36 @@ void setup()
       sieci == "";
       for (int i = 0; i < n; ++i)
       {
-        // Serial.println("in the loop");
+        
         // Print SSID and RSSI for each network found
 
-        String temp = WiFi.SSID(i);
+        String currentWifiId = WiFi.SSID(i);
 
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.println(temp);
-        sieci += "<input type=\"radio\"  name=\"ssid\" value=\"" + temp + "\">";
-        sieci += "<label for=\"html\">" + temp + "</label><br>";
+        /*
+          //Print all avaliable networks in console
+          Serial.print(i + 1);
+          Serial.print(": ");
+          Serial.println(currentWifiId); */
+        sieci += "<input type=\"radio\"  name=\"ssid\" value=\"" + currentWifiId + "\">";
+        sieci += "<label for=\"html\">" + currentWifiId + "</label><br>";
       }
     }
-    Serial.println(sieci);
+   // Serial.println(sieci);
+
+
+
+
+
+
+
+
+
 
     dnsServer.start(53, "*", WiFi.softAPIP());
 
-    handlerrr = new CaptiveRequestHandler();
+    requestHandler = new CaptiveRequestHandler();
 
-    server.addHandler(handlerrr).setFilter(ON_AP_FILTER); // only when requested from AP
+    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP
 
     // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -338,6 +307,13 @@ void setup()
       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip+"\n or http://192.168.0.120 \n or try dns address: http://esp.local");
       delay(5000);
       ESP.restart(); });
+/* 
+    dnsServer.start(53, "*", WiFi.softAPIP());
+
+    requestHandler = new CaptiveRequestHandler();
+
+    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP */
+
     server.begin();
   }
 }
@@ -353,7 +329,7 @@ void loop()
     }
     else
     {
-      server.removeHandler(handlerrr);
+      server.removeHandler(requestHandler);
       dnsServer.stop();
     }
   }

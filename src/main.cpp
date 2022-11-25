@@ -116,12 +116,7 @@ String processor(const String &var)
 {
   if (var == "BUTTONPLACEHOLDER")
   {
-    String buttons = "";
-    buttons += sieci;
-
-    buttons += "</br></br>";
-
-    return buttons;
+    return sieci;
   }
   return String();
 }
@@ -196,6 +191,10 @@ void setup()
   else  {
     counter = 0;
     // Connect to Wi-Fi network with SSID and password
+
+
+
+
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
     WiFi.softAP("ESP-WIFI-MANAGER", NULL);
@@ -245,12 +244,12 @@ void setup()
 
 
 
-
+/* 
     dnsServer.start(53, "*", WiFi.softAPIP());
 
     requestHandler = new CaptiveRequestHandler();
 
-    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP
+    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP */
 
     // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -307,12 +306,12 @@ void setup()
       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip+"\n or http://192.168.0.120 \n or try dns address: http://esp.local");
       delay(5000);
       ESP.restart(); });
-/* 
+
     dnsServer.start(53, "*", WiFi.softAPIP());
 
     requestHandler = new CaptiveRequestHandler();
 
-    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP */
+    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP
 
     server.begin();
   }

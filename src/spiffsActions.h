@@ -9,9 +9,6 @@ const char* const  passPath ="/pass.txt";
 const char* const  ipPath  = "/ip.txt" ;
 const char* const  gatewayPath = "/gateway.txt" ;
 
-const char* const hostname = "{{ cookiecutter.device_hostname }}";
-
-
 void initSPIFFS();
 
 String readFile(fs::FS &fs, const char *path);

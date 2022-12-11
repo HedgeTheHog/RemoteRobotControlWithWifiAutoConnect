@@ -10,18 +10,21 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncTCP.h>
-#include "SPIFFS.h"
 #include <DNSServer.h>
 #include <ESPmDNS.h>
-//#include "initializeWifi.h"
+#include "SPIFFS.h"
 #include "spiffsActions.h"
 #include "enginesControl.h"
 #include "variables.h"
+#include "eventGetter.h"
+#include "autoNavigation.h"
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
+AsyncWebHandler *requestHandler;
+AsyncWebSocket ws("/ws");
+AsyncEventSource events("/events");
 DNSServer dnsServer;
-bool clientConnected = false;
 
 // Search for parameter in HTTP POST request
 const char *PARAM_INPUT_1 = "ssid";
@@ -34,32 +37,18 @@ String ssid;
 String pass;
 String ip;
 String gateway;
+String networksToInjectToHTML = "";
+
 
 IPAddress localIP;
 // IPAddress localIP(192, 168, 1, 200); // hardcoded
 
-// Set your Gateway IP address
 IPAddress localGateway;
 // IPAddress localGateway(192, 168, 1, 1); //hardcoded
 IPAddress subnet(255, 255, 0, 0);
 
-AsyncWebHandler *requestHandler;
-
-AsyncWebSocket ws("/ws");
-AsyncEventSource events("/events");
-
-// Timer variables
-unsigned long previousMillis = 0;
-const long interval = 10000; // interval to wait for Wi-Fi connection (milliseconds)
-
-// Set LED GPIO
-const int ledPin = 2;
-// Stores LED state
-
-String ledState;
-int n;
-String sieci = "";
-int counter = 0;
+int amountOfNetworks;
+int requestsCounter = 0; //needed for auto connect on mobile, for some reason 3 requests are needed
 
 // Initialize SPIFFS
 void initSPIFFS();
@@ -89,21 +78,18 @@ bool initWiFi()
   const char *passEr = pass.c_str();
 
   WiFi.begin(ssidEr, passEr);
-  Serial.println("Connecting to WiFi...");
+  Serial.print("Connecting to WiFi...");
 
-  unsigned long currentMillis = millis();
-  previousMillis = currentMillis;
-
+  int waitCounter=0;
   while (WiFi.status() != WL_CONNECTED)
   {
     Serial.print('.');
     delay(500);
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval)
+    waitCounter++;
+    if (waitCounter>21)
     {
-
       Serial.println("Failed to connect.");
-      counter = 0;
+      requestsCounter = 0;
       return false;
     }
   }
@@ -117,7 +103,7 @@ String processor(const String &var)
 {
   if (var == "BUTTONPLACEHOLDER")
   {
-    return sieci;
+    return networksToInjectToHTML;
   }
   return String();
 }
@@ -138,80 +124,11 @@ public:
   {
     request->send(SPIFFS, "/wifimanager.html", "text/html", false, processor);
     Serial.println("async capture");
-    counter++;
+    requestsCounter++;
   }
 };
 
-// methids from robot
-
-// websocket to control the robot manually, get info wchich direction is selected
-void handleWebSocketMessage(void *arg, uint8_t *data, size_t len)
-{
-  AwsFrameInfo *info = (AwsFrameInfo *)arg;
-  if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT)
-  {
-    data[len] = 0;
-
-    Serial.println((char *)data);
-
-    if (strcmp((char *)data, "toggle") == 0)
-    {
-      ledState = !ledState;
-      //  notifyClients();
-    }
-    if (strcmp((char *)data, "forward") == 0)
-    {
-      forwardBool = 1;
-      changed = 1;
-    }
-    if (strcmp((char *)data, "back") == 0)
-    {
-      backBool = 1;
-      changed = 1;
-    }
-    if (strcmp((char *)data, "left") == 0)
-    {
-      leftBool = 1;
-      changed = 1;
-    }
-    if (strcmp((char *)data, "right") == 0)
-    {
-      rightBool = 1;
-      changed = 1;
-    }
-    if (strcmp((char *)data, "stop") == 0)
-    {
-      Serial.println("STOPPP");
-      changed = 1;
-      stopBool = 1;
-    }
-
-    if (strcmp((char *)data, "ctrl") == 0)
-    {
-      controll != controll;
-    }
-  }
-}
-
-void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
-             void *arg, uint8_t *data, size_t len)
-{
-  switch (type)
-  {
-  case WS_EVT_CONNECT:
-    Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-    break;
-  case WS_EVT_DISCONNECT:
-    Serial.printf("WebSocket client #%u disconnected\n", client->id());
-    break;
-  case WS_EVT_DATA:
-    handleWebSocketMessage(arg, data, len);
-    break;
-  case WS_EVT_PONG:
-  case WS_EVT_ERROR:
-    break;
-  }
-}
+// methods from robot
 
 void initWebSocket()
 {
@@ -219,70 +136,27 @@ void initWebSocket()
   server.addHandler(&ws);
 }
 
-void manualControl()
+int autoPilot(int travelDirections)
 {
-  if (forwardBool == 1)
-  {
-    forward();
-    forwardBool = 0;
-  }
-  else if (backBool == 1)
-  {
-    back();
-    backBool = 0;
-  }
-  else if (rightBool == 1)
-  {
-    right();
-    rightBool = 0;
-  }
-  else if (leftBool == 1)
-  {
-    left();
-    leftBool = 0;
-  }
-  else if (bRightBool == 1)
-  {
-    rightB();
-    bRightBool = 0;
-  }
-  else if (backLeftBool == 1)
-  {
-    leftB();
-    backLeftBool = 0;
-  }
-  else
+    if ((millis() - lastTime) > timerDelay)
+    {
+      getSensorReadings();
+      String directionReadings =String(sonarOneReading) + ":" +String(sonarTwoReading);
+      events.send(directionReadings.c_str(), "distance", millis());  //because of this I failed to move this function to other file
+      travelDirections = getTravelDirection();
+      lastTime = millis();
+    }
 
-      if (stopBool == 1)
-  {
-    stopBool = 0;
-    stop();
-  }
+  return travelDirections;
 }
-
-void colisionEvader(){
-  
-}
-
+//
 void setup()
 {
-
-  // setup engine pins
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
-  pinMode(14, OUTPUT);
-  pinMode(27, OUTPUT);
-  pinMode(26, OUTPUT);
-  pinMode(25, OUTPUT);
-
   // Serial port for debugging purposes
   Serial.begin(115200);
 
   initSPIFFS();
-
-  // Set GPIO 2 as an OUTPUT
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
+  setupEngine();
 
   // Load values saved in SPIFFS
   ssid = readFile(SPIFFS, ssidPath);
@@ -293,12 +167,6 @@ void setup()
     Serial.println(pass);
     Serial.println(ip);
     Serial.println(gateway); */
-
-  const char *ssidChar = ssid.c_str();
-  const char *passChar = pass.c_str();
-  const char *ipChar = ip.c_str();
-  const char *gatewayChar = gateway.c_str();
-  // initWiFiii_init();
 
   if (initWiFi())
   {
@@ -317,13 +185,14 @@ void setup()
                      // send event with message "hello!", id current millis
                      // and set reconnect delay to 1 second
                      client->send("hello!", NULL, millis(), 10000); });
-    server.addHandler(&events);
 
+    initWebSocket();
+    server.addHandler(&events);
     server.begin();
   }
   else
   {
-    counter = 0;
+    requestsCounter = 0;
     // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
@@ -333,43 +202,38 @@ void setup()
     Serial.print("AP IP address: ");
     Serial.println(IP);
 
-    n = WiFi.scanNetworks();
+    amountOfNetworks = WiFi.scanNetworks();
     Serial.println("scan done");
-    if (n == -2)
+    if (amountOfNetworks == -2)
     {
       Serial.println("SCAN FAILED if this happens often then needs to be handled");
     }
-    else if (n == 0)
+    else if (amountOfNetworks == 0)
     {
       Serial.println("no networks found");
     }
     else
     {
-      Serial.print(n);
+      Serial.print(amountOfNetworks);
       Serial.println(" networks found");
-      sieci == "";
-      for (int i = 0; i < n; ++i)
+      for (int i = 0; i < amountOfNetworks; ++i)
       {
 
         // Print SSID and RSSI for each network found
-
         String currentWifiId = WiFi.SSID(i);
 
-        /*
-          //Print all avaliable networks in console
+        /*  
           Serial.print(i + 1);
           Serial.print(": ");
           Serial.println(currentWifiId); */
-        sieci += "<input type=\"radio\"  name=\"ssid\" value=\"" + currentWifiId + "\">";
-        sieci += "<label for=\"html\">" + currentWifiId + "</label><br>";
+        networksToInjectToHTML += "<input type=\"radio\"  name=\"ssid\" value=\"" + currentWifiId + "\"><label for=\"html\">" + currentWifiId + "</label><br>";
       }
     }
     // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
               {
       request->send(SPIFFS, "/wifimanager.html", "text/html", false, processor);
-         Serial.println("Client Connected");  
-         clientConnected=true; });
+         Serial.println("Client Connected"); });
 
     server.serveStatic("/", SPIFFS, "/");
 
@@ -411,8 +275,6 @@ void setup()
             // Write file to save value
             writeFile(SPIFFS, gatewayPath, gateway.c_str());
           }
-                  clientConnected=true;
-
           //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
         }
       }
@@ -434,7 +296,7 @@ void loop()
 {
   if (WiFi.getMode() != 1)
   {
-    if (counter <= 3)
+    if (requestsCounter <= 3)
     {
 
       dnsServer.processNextRequest();
@@ -445,9 +307,26 @@ void loop()
       dnsServer.stop();
     }
   }
+
   else
   {
     ws.cleanupClients();
 
+    if (userSelectedDirection == 99)
+    {
+      Serial.print("changing control to: ");
+      remoteControl = !remoteControl;
+      Serial.println(remoteControl);
+      userSelectedDirection = 100;
+    }
+    if (remoteControl == 0)
+    {
+      userSelectedDirection = manualControl(userSelectedDirection);
+    }
+    else
+    {
+      automaticallySelectedDirection = autoPilot(automaticallySelectedDirection);
+      automaticallySelectedDirection = manualControl(automaticallySelectedDirection);
+    }
   }
 }

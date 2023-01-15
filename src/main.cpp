@@ -1,7 +1,7 @@
 /*********
   Rui Santos
   Complete instructions at https://RandomNerdTutorials.com/esp32-wi-fi-manager-asyncwebserver/
-  
+
   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
   The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 *********/
@@ -10,181 +10,189 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncTCP.h>
+#include <DNSServer.h>
+#include <ESPmDNS.h>
 #include "SPIFFS.h"
-
-
+#include "spiffsActions.h"
+#include "enginesControl.h"
+#include "variables.h"
+#include "eventGetter.h"
+#include "autoNavigation.h"
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
+AsyncWebHandler *requestHandler;
+AsyncWebSocket ws("/ws");
+AsyncEventSource events("/events");
+DNSServer dnsServer;
 
 // Search for parameter in HTTP POST request
-const char* PARAM_INPUT_1 = "ssid";
-const char* PARAM_INPUT_2 = "pass";
-const char* PARAM_INPUT_3 = "ip";
-const char* PARAM_INPUT_4 = "gateway";
+const char *PARAM_INPUT_1 = "ssid";
+const char *PARAM_INPUT_2 = "pass";
+const char *PARAM_INPUT_3 = "ip";
+const char *PARAM_INPUT_4 = "gateway";
 
-
-//Variables to save values from HTML form
+// Variables to save values from HTML form
 String ssid;
 String pass;
 String ip;
 String gateway;
+String networksToInjectToHTML = "";
 
-// File paths to save input values permanently
-const char* ssidPath = "/ssid.txt";
-const char* passPath = "/pass.txt";
-const char* ipPath = "/ip.txt";
-const char* gatewayPath = "/gateway.txt";
 
 IPAddress localIP;
-//IPAddress localIP(192, 168, 1, 200); // hardcoded
+// IPAddress localIP(192, 168, 1, 200); // hardcoded
 
-// Set your Gateway IP address
 IPAddress localGateway;
-//IPAddress localGateway(192, 168, 1, 1); //hardcoded
+// IPAddress localGateway(192, 168, 1, 1); //hardcoded
 IPAddress subnet(255, 255, 0, 0);
 
-// Timer variables
-unsigned long previousMillis = 0;
-const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
-
-// Set LED GPIO
-const int ledPin = 2;
-// Stores LED state
-
-String ledState;
+int amountOfNetworks;
+int requestsCounter = 0; //needed for auto connect on mobile, for some reason 3 requests are needed
 
 // Initialize SPIFFS
-void initSPIFFS() {
-  if (!SPIFFS.begin(true)) {
-    Serial.println("An error has occurred while mounting SPIFFS");
-  }
-  Serial.println("SPIFFS mounted successfully");
-}
-
-// Read File from SPIFFS
-String readFile(fs::FS &fs, const char * path){
-  Serial.printf("Reading file: %s\r\n", path);
-
-  File file = fs.open(path);
-  if(!file || file.isDirectory()){
-    Serial.println("- failed to open file for reading");
-    return String();
-  }
-  
-  String fileContent;
-  while(file.available()){
-    fileContent = file.readStringUntil('\n');
-    break;     
-  }
-  return fileContent;
-}
-
-// Write file to SPIFFS
-void writeFile(fs::FS &fs, const char * path, const char * message){
-  Serial.printf("Writing file: %s\r\n", path);
-
-  File file = fs.open(path, FILE_WRITE);
-  if(!file){
-    Serial.println("- failed to open file for writing");
-    return;
-  }
-  if(file.print(message)){
-    Serial.println("- file written");
-  } else {
-    Serial.println("- frite failed");
-  }
-}
+void initSPIFFS();
 
 // Initialize WiFi
-bool initWiFi() {
-  if(ssid=="" || ip==""){
+bool initWiFi()
+{
+  if (ssid == "" || ip == "")
+  {
     Serial.println("Undefined SSID or IP address.");
     return false;
   }
 
   WiFi.mode(WIFI_STA);
-  localIP.fromString(ip.c_str());
-  localGateway.fromString(gateway.c_str());
+  localIP.fromString(ip);
+  localGateway.fromString(gateway);
 
+  Serial.println(subnet);
 
-  if (!WiFi.config(localIP, localGateway, subnet)){
+  if (!WiFi.config(localIP, localGateway, subnet))
+  {
     Serial.println("STA Failed to configure");
     return false;
   }
-  WiFi.begin(ssid.c_str(), pass.c_str());
-  Serial.println("Connecting to WiFi...");
 
-  unsigned long currentMillis = millis();
-  previousMillis = currentMillis;
+  const char *ssidEr = ssid.c_str();
+  const char *passEr = pass.c_str();
 
-  while(WiFi.status() != WL_CONNECTED) {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
+  WiFi.begin(ssidEr, passEr);
+  Serial.print("Connecting to WiFi...");
+
+  int waitCounter=0;
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print('.');
+    delay(500);
+    waitCounter++;
+    if (waitCounter>21)
+    {
       Serial.println("Failed to connect.");
+      requestsCounter = 0;
       return false;
     }
   }
 
   Serial.println(WiFi.localIP());
+  MDNS.begin("esp");
   return true;
 }
 
-// Replaces placeholder with LED state value
-String processor(const String& var) {
-  if(var == "STATE") {
-    if(digitalRead(ledPin)) {
-      ledState = "ON";
-    }
-    else {
-      ledState = "OFF";
-    }
-    return ledState;
+String processor(const String &var)
+{
+  if (var == "BUTTONPLACEHOLDER")
+  {
+    return networksToInjectToHTML;
   }
   return String();
 }
 
-void setup() {
+class CaptiveRequestHandler : public AsyncWebHandler
+{
+public:
+  CaptiveRequestHandler() {}
+  virtual ~CaptiveRequestHandler() {}
+
+  bool canHandle(AsyncWebServerRequest *request)
+  {
+    // request->addInterestingHeader("ANY");
+    return true;
+  }
+
+  void handleRequest(AsyncWebServerRequest *request)
+  {
+    request->send(SPIFFS, "/wifimanager.html", "text/html", false, processor);
+    Serial.println("async capture");
+    requestsCounter++;
+  }
+};
+
+// methods from robot
+
+void initWebSocket()
+{
+  ws.onEvent(onEvent);
+  server.addHandler(&ws);
+}
+
+int autoPilot(int travelDirections)
+{
+    if ((millis() - lastTime) > timerDelay)
+    {
+      getSensorReadings();
+      String directionReadings =String(sonarOneReading) + ":" +String(sonarTwoReading);
+      events.send(directionReadings.c_str(), "distance", millis());  //because of this I failed to move this function to other file
+      travelDirections = getTravelDirection();
+      lastTime = millis();
+    }
+
+  return travelDirections;
+}
+//
+void setup()
+{
   // Serial port for debugging purposes
   Serial.begin(115200);
 
   initSPIFFS();
+  setupEngine();
 
-  // Set GPIO 2 as an OUTPUT
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
-  
   // Load values saved in SPIFFS
   ssid = readFile(SPIFFS, ssidPath);
   pass = readFile(SPIFFS, passPath);
   ip = readFile(SPIFFS, ipPath);
-  gateway = readFile (SPIFFS, gatewayPath);
-  Serial.println(ssid);
-  Serial.println(pass);
-  Serial.println(ip);
-  Serial.println(gateway);
+  gateway = readFile(SPIFFS, gatewayPath);
+  /*   Serial.println(ssid);
+    Serial.println(pass);
+    Serial.println(ip);
+    Serial.println(gateway); */
 
-  if(initWiFi()) {
+  if (initWiFi())
+  {
     // Route for root / web page
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-      request->send(SPIFFS, "/index.html", "text/html", false, processor);
-    });
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send(SPIFFS, "/index.html", "text/html", false); });
     server.serveStatic("/", SPIFFS, "/");
-    
-    // Route to set GPIO state to HIGH
-    server.on("/on", HTTP_GET, [](AsyncWebServerRequest *request) {
-      digitalWrite(ledPin, HIGH);
-      request->send(SPIFFS, "/index.html", "text/html", false, processor);
-    });
 
-    // Route to set GPIO state to LOW
-    server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request) {
-      digitalWrite(ledPin, LOW);
-      request->send(SPIFFS, "/index.html", "text/html", false, processor);
-    });
+    // init event listener
+    events.onConnect([](AsyncEventSourceClient *client)
+                     {
+                     if (client->lastId())
+                     {
+                       Serial.printf("Client reconnected! Last message ID that it got is: %u\n", client->lastId());
+                     }
+                     // send event with message "hello!", id current millis
+                     // and set reconnect delay to 1 second
+                     client->send("hello!", NULL, millis(), 10000); });
+
+    initWebSocket();
+    server.addHandler(&events);
     server.begin();
   }
-  else {
+  else
+  {
+    requestsCounter = 0;
     // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
@@ -192,31 +200,45 @@ void setup() {
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
-    Serial.println(IP); 
+    Serial.println(IP);
 
- int n = WiFi.scanNetworks();
-  Serial.println("scan done");
-  if (n == 0) {
-      Serial.println("no networks found");
-  } else {
-    Serial.print(n);
-    Serial.println(" networks found");
-    for (int i = 0; i < n; ++i) {
-      // Print SSID and RSSI for each network found
-      Serial.print(i + 1);
-      Serial.print(": ");
-      Serial.println(WiFi.SSID(i));
+    amountOfNetworks = WiFi.scanNetworks();
+    Serial.println("scan done");
+    if (amountOfNetworks == -2)
+    {
+      Serial.println("SCAN FAILED if this happens often then needs to be handled");
     }
-  }
+    else if (amountOfNetworks == 0)
+    {
+      Serial.println("no networks found");
+    }
+    else
+    {
+      Serial.print(amountOfNetworks);
+      Serial.println(" networks found");
+      for (int i = 0; i < amountOfNetworks; ++i)
+      {
 
+        // Print SSID and RSSI for each network found
+        String currentWifiId = WiFi.SSID(i);
+
+        /*  
+          Serial.print(i + 1);
+          Serial.print(": ");
+          Serial.println(currentWifiId); */
+        networksToInjectToHTML += "<input type=\"radio\"  name=\"ssid\" value=\"" + currentWifiId + "\"><label for=\"html\">" + currentWifiId + "</label><br>";
+      }
+    }
     // Web Server Root URL
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/wifimanager.html", "text/html");
-    });
-    
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+      request->send(SPIFFS, "/wifimanager.html", "text/html", false, processor);
+         Serial.println("Client Connected"); });
+
     server.serveStatic("/", SPIFFS, "/");
-    
-    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+
+    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request)
+              {
       int params = request->params();
       for(int i=0;i<params;i++){
         AsyncWebParameter* p = request->getParam(i);
@@ -256,14 +278,55 @@ void setup() {
           //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
         }
       }
-      request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
-      delay(3000);
-      ESP.restart();
-    });
+      request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip+"\n or http://192.168.0.120 \n or try dns address: http://esp.local");
+      delay(5000);
+      ESP.restart(); });
+
+    dnsServer.start(53, "*", WiFi.softAPIP());
+
+    requestHandler = new CaptiveRequestHandler();
+
+    server.addHandler(requestHandler).setFilter(ON_AP_FILTER); // only when requested from AP
+
     server.begin();
   }
 }
 
-void loop() {
+void loop()
+{
+  if (WiFi.getMode() != 1)
+  {
+    if (requestsCounter <= 3)
+    {
 
+      dnsServer.processNextRequest();
+    }
+    else
+    {
+      server.removeHandler(requestHandler);
+      dnsServer.stop();
+    }
+  }
+
+  else
+  {
+    ws.cleanupClients();
+
+    if (userSelectedDirection == 99)
+    {
+      Serial.print("changing control to: ");
+      remoteControl = !remoteControl;
+      Serial.println(remoteControl);
+      userSelectedDirection = 100;
+    }
+    if (remoteControl == 0)
+    {
+      userSelectedDirection = manualControl(userSelectedDirection);
+    }
+    else
+    {
+      automaticallySelectedDirection = autoPilot(automaticallySelectedDirection);
+      automaticallySelectedDirection = manualControl(automaticallySelectedDirection);
+    }
+  }
 }

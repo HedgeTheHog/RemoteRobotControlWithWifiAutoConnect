@@ -63,6 +63,57 @@
      color:#8c8c8c;
      font-weight: bold;
    }
+   .controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      grid-column-gap: 0px;
+      grid-row-gap: 0px;
+    }
+    .controls > div {
+      position: relative;
+    }
+    .controls .stretch {
+      margin-top: 100%;
+      display: block;
+    }
+    .controls button {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      font-size: 160px;
+      border-radius: 14px;
+      cursor: pointer;
+    }
+    .controls button:hover {
+      background: #E0E0E0;
+    }
+    .controls button.buttonS {
+      left: 10%;
+      right: 10%;
+      top: 10%;
+      bottom: 10%;
+      font-size: 60px;
+      border-radius: 100%;
+    }
+@media only screen and (max-width: 600px) {
+  .content {
+    padding: 0;
+  }
+  .card {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+  .controls button {
+      font-size: 22vw
+    }
+    .controls button.buttonS {
+      font-size: 9vw;
+    }
+}
+
   </style>
 <title>ESP Web Server</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -78,13 +129,26 @@
       <p class="state">state: <span id="state">%STATE%</span></p>
       <p><button id="button" class="button">Toggle</button></p>
 
-      <p><button id="button1" class="buttonF">Forward</button></p>
-      <p><button id="button2" class="buttonB">Back</button></p>
-      <p><button id="button3" class="buttonL">Left</button></p>
-      <p><button id="button4" class="buttonR">Right</button></p>
-       <p><button id="button5" class="buttonS">Stop</button></p>
+      <div class="controls">
+        <div></div>
+        <div title="Move Forward"><span class="stretch"></span><button id="button1" class="buttonF">&#8679;</button></div>
+        <div></div>
+        <div title="Move Left"><span class="stretch"></span><button id="button3" class="buttonL">&#8678;</button></div>
+        <div title="Stop"><span class="stretch"></span><button id="button5" class="buttonS">Stop</button></div>
+        <div title="Move Right"><span class="stretch"></span><button id="button4" class="buttonR">&#8680;</button></div>
+        <div></div>
+        <div title="Move Backwards"><span class="stretch"></span><button id="button2" class="buttonB">&#8681;</button></div>
+        <div></div>
+
+      </div>
+
+      <p></p>
+      <p></p>
+      <p></p>
+      <p></p>
+       <p></p>
         <p><button id="button6" class="buttonS6">Manual/Auto</button></p>
-      
+
     </div>
   </div>
 <div class="content">
@@ -94,7 +158,7 @@
                 <p><i class="fas fa-thermometer-half" style="color:#059e8a;"></i> Distance</p><p><span class="reading"><span id="dist1">%DISTANCE%</span> Cm</span></p>
 
       </div>
-     
+
     </div>
 
 
@@ -102,7 +166,7 @@
 <script>
 if (!!window.EventSource) {
  var source = new EventSource('/events');
- 
+
  source.addEventListener('open', function(e) {
   console.log("Events Connected");
  }, false);
@@ -111,7 +175,7 @@ if (!!window.EventSource) {
     console.log("Events Disconnected");
   }
  }, false);
- 
+
  source.addEventListener('distance', function(e) {
 
 //here regex
@@ -186,7 +250,7 @@ const myArray = e.data.split(":");
     websocket.send('ctrl');
   }
 
-   
+
 </script>
 </body>
 </html>

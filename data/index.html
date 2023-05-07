@@ -58,6 +58,16 @@
      box-shadow: 2 2px #CDCDCD;
      transform: translateY(2px);
    }
+   .buttonS6 {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+   }
    .state {
      font-size: 1.5rem;
      color:#8c8c8c;
@@ -121,12 +131,12 @@
 </head>
 <body>
   <div class="topnav">
-    <h1>ESP WebSocket Server</h1>
+    <h1>ESP Remote car control</h1>
   </div>
   <div class="content">
     <div class="card">
       <h2>Output - GPIO 2</h2>
-      <p class="state">state: <span id="state">%STATE%</span></p>
+      <p class="state"> <span id="state">Switch on/off led on microcontroller</span></p>
       <p><button id="button" class="button">Toggle</button></p>
 
       <div class="controls">
@@ -147,7 +157,8 @@
       <p></p>
       <p></p>
        <p></p>
-        <p><button id="button6" class="buttonS6">Manual/Auto</button></p>
+       <p class="state">state: <span id="state">Switch on/off manual cotrol</span></p>
+        <p class="state"><button id="button6" class="buttonS6">Toggle</button></p>
 
     </div>
   </div>

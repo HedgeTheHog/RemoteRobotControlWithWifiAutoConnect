@@ -43,9 +43,9 @@ String networksToInjectToHTML = "";
 IPAddress localIP;
 // IPAddress localIP(192, 168, 1, 200); // hardcoded
 
-IPAddress localGateway;
-// IPAddress localGateway(192, 168, 1, 1); //hardcoded
-IPAddress subnet(255, 255, 0, 0);
+//IPAddress localGateway;
+IPAddress localGateway(192, 168, 1, 1); //hardcoded
+IPAddress subnet(255, 255, 255, 0); //hardcoded
 
 int amountOfNetworks;
 int requestsCounter = 0; //needed for auto connect on mobile, for some reason 3 requests are needed
@@ -64,7 +64,7 @@ bool initWiFi()
 
   WiFi.mode(WIFI_STA);
   localIP.fromString(ip);
-  localGateway.fromString(gateway);
+  //localGateway.fromString(gateway);
 
   Serial.println(subnet);
 
@@ -86,10 +86,11 @@ bool initWiFi()
     Serial.print('.');
     delay(500);
     waitCounter++;
-    if (waitCounter>21)
+    if (waitCounter>4)
     {
       Serial.println("Failed to connect.");
       requestsCounter = 0;
+     WiFi.disconnect(); 
       return false;
     }
   }
@@ -222,10 +223,9 @@ void setup()
         // Print SSID and RSSI for each network found
         String currentWifiId = WiFi.SSID(i);
 
-        /*  
           Serial.print(i + 1);
           Serial.print(": ");
-          Serial.println(currentWifiId); */
+          Serial.println(currentWifiId); 
         networksToInjectToHTML += "<input type=\"radio\"  name=\"ssid\" value=\"" + currentWifiId + "\"><label for=\"html\">" + currentWifiId + "</label><br>";
       }
     }
@@ -280,7 +280,8 @@ void setup()
       }
       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip+"\n or http://192.168.0.120 \n or try dns address: http://esp.local");
       delay(5000);
-      ESP.restart(); });
+      ESP.restart(); 
+      });
 
     dnsServer.start(53, "*", WiFi.softAPIP());
 
